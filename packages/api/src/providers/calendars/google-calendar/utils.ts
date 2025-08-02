@@ -113,50 +113,11 @@ export function parseGoogleCalendarEvent({
   };
 }
 
-function parseGoogleTaskDate(date: string) {
-  return Temporal.PlainDate.from(date.split("T")[0]!);
-}
-
-export function parseGoogleTask({
-  task,
-  collectionId,
-  accountId,
-}: {
-  task: GoogleTask;
-  collectionId: string;
-  accountId: string;
-}): Task {
-  return {
-    id: task.id!,
-    title: task.title,
-    completed: task.completed ? parseGoogleTaskDate(task.completed) : undefined,
-    description: task.notes,
-    due: task.due ? parseGoogleTaskDate(task.due) : undefined,
-    providerId: "google",
-    accountId,
-    taskCollectionId: collectionId,
-  };
-}
-
-export function toGoogleTask(
-  task: CreateTaskInput | UpdateTaskInput,
-): GoogleTaskUpdateParams {
-  return {
-    ...("id" in task ? { id: task.id } : {}),
-    title: task.title,
-    notes: task.description,
-    due: task.due?.toString(),
-    status: task.completed ? "completed" : "needsAction",
-    completed: task.completed?.toString(),
-    tasklist: task.taskCollectionId,
-  };
-}
-
 export function toGoogleCalendarEvent(
   event: CreateEventInput | UpdateEventInput,
 ): GoogleCalendarEventCreateParams {
   return {
-    ...("id" in event ? { id: event.id } : {}),
+    id: event.id,
     summary: event.title,
     description: event.description,
     location: event.location,
@@ -165,7 +126,7 @@ export function toGoogleCalendarEvent(
     conferenceData: event.conference
       ? toGoogleCalendarConferenceData(event.conference)
       : undefined,
-    // Required when creating/updating events with conference data
+    // Should always be 1 to ensure conference data is retained for all event modification requests.
     conferenceDataVersion: 1,
   };
 }
@@ -335,12 +296,14 @@ function parseGoogleCalendarConferenceFallback(
   // Function to extract URLs from text using a comprehensive regex
   const extractUrls = (text: string): string[] => {
     const urlRegex = /https?:\/\/[^\s<>"'{}|\\^`[\]]+/gi;
+
     return text.match(urlRegex) || [];
   };
 
   // Function to check if a URL is a meeting link
   const checkMeetingLink = (url: string): Conference | undefined => {
     const service = detectMeetingLink(url);
+
     if (service) {
       return {
         id: service.id,
@@ -353,6 +316,7 @@ function parseGoogleCalendarConferenceFallback(
         },
       };
     }
+
     return undefined;
   };
 
@@ -405,7 +369,10 @@ function parseGoogleCalendarConferenceFallback(
     for (const attachment of event.attachments) {
       if (attachment.fileUrl) {
         const service = checkMeetingLink(attachment.fileUrl);
-        if (service) return service;
+
+        if (service) {
+          return service;
+        }
       }
     }
   }
@@ -413,7 +380,10 @@ function parseGoogleCalendarConferenceFallback(
   // 7. Check gadget.link (legacy)
   if (event.gadget?.link) {
     const service = checkMeetingLink(event.gadget.link);
-    if (service) return service;
+
+    if (service) {
+      return service;
+    }
   }
 
   return undefined;

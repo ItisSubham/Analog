@@ -40,6 +40,33 @@ const microsoftMetadataSchema = z.object({
       parsed: z.string().optional(),
     })
     .optional(),
+  onlineMeeting: z
+    .object({
+      conferenceId: z.string().optional(),
+      joinUrl: z.string().url().optional(),
+      phones: z
+        .object({
+          number: z.string(),
+          type: z.enum([
+            "home",
+            "business",
+            "mobile",
+            "other",
+            "assistant",
+            "homeFax",
+            "businessFax",
+            "otherFax",
+            "pager",
+            "radio",
+          ]),
+        })
+        .array()
+        .optional(),
+      quickDial: z.string().optional(),
+      tollFreeNumbers: z.array(z.string()).optional(),
+      tollNumber: z.string().optional(),
+    })
+    .optional(),
 });
 
 const googleMetadataSchema = z.object({

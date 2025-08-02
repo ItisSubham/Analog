@@ -182,6 +182,7 @@ export function parseMicrosoftEvent({
             },
           }
         : {}),
+      onlineMeeting: event.onlineMeeting,
     },
   };
 }

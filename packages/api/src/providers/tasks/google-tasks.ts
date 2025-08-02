@@ -6,10 +6,7 @@ import {
   TaskCollectionWithTasks,
 } from "../../interfaces";
 import { CreateTaskInput, UpdateTaskInput } from "../../schemas/tasks";
-import {
-  parseGoogleTask,
-  toGoogleTask,
-} from "../calendars/google-calendar/utils";
+import { parseGoogleTask, toGoogleTask } from "./google-tasks/utils";
 import { TaskProvider } from "../interfaces";
 import { ProviderError } from "../lib/provider-error";
 
