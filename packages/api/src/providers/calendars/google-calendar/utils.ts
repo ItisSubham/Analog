@@ -1,8 +1,6 @@
 import { detectMeetingLink } from "@analog/meeting-links";
 import { Temporal } from "temporal-polyfill";
 
-import { CreateEventInput, UpdateEventInput } from "../../schemas/events";
-import { CreateTaskInput, UpdateTaskInput } from "../../schemas/tasks";
 import {
   Attendee,
   AttendeeStatus,
@@ -10,7 +8,9 @@ import {
   CalendarEvent,
   Conference,
   Task,
-} from "../interfaces";
+} from "../../../interfaces";
+import { CreateEventInput, UpdateEventInput } from "../../../schemas/events";
+import { CreateTaskInput, UpdateTaskInput } from "../../../schemas/tasks";
 import {
   GoogleCalendarCalendarListEntry,
   GoogleCalendarDate,
@@ -162,11 +162,11 @@ export function toGoogleCalendarEvent(
     location: event.location,
     start: toGoogleCalendarDate(event.start),
     end: toGoogleCalendarDate(event.end),
-    // conferenceData: event.conference
-    //   ? toGoogleCalendarConferenceData(event.conference)
-    //   : undefined,
+    conferenceData: event.conference
+      ? toGoogleCalendarConferenceData(event.conference)
+      : undefined,
     // Required when creating/updating events with conference data
-    // ...(event.conference && { conferenceDataVersion: 1 }),
+    conferenceDataVersion: 1,
   };
 }
 
@@ -179,38 +179,57 @@ function toJoinUrl(joinUrl: string) {
     return joinUrl;
   }
 }
+
 function toGoogleCalendarConferenceData(
   conference: Conference,
 ): GoogleCalendarEventConferenceData {
   const entryPoints: GoogleCalendarEventConferenceData["entryPoints"] = [];
 
-  if (conference.joinUrl) {
+  if (conference.video?.joinUrl?.value) {
     entryPoints.push({
       entryPointType: "video",
-      uri: conference.joinUrl,
-      ...(conference.meetingCode && {
-        meetingCode: conference.meetingCode,
-        accessCode: conference.meetingCode,
+      uri: conference.video.joinUrl.value,
+      ...(conference.video.meetingCode && {
+        meetingCode: conference.video.meetingCode,
+        accessCode: conference.video.meetingCode,
       }),
-      ...(conference.password && {
-        password: conference.password,
-        passcode: conference.password,
+      ...(conference.video.password && {
+        password: conference.video.password,
+        passcode: conference.video.password,
       }),
-      label: toJoinUrl(conference.joinUrl),
+      label:
+        conference.video.joinUrl.label ||
+        toJoinUrl(conference.video.joinUrl.value),
     });
   }
 
-  if (conference.phoneNumbers?.length) {
-    conference.phoneNumbers.forEach((phoneNumber) => {
+  if (conference.sip?.joinUrl?.value) {
+    entryPoints.push({
+      entryPointType: "sip",
+      uri: conference.sip.joinUrl.value,
+      ...(conference.sip.meetingCode && {
+        meetingCode: conference.sip.meetingCode,
+        accessCode: conference.sip.meetingCode,
+      }),
+      ...(conference.sip.password && {
+        password: conference.sip.password,
+        passcode: conference.sip.password,
+      }),
+      label: conference.sip.joinUrl.label,
+    });
+  }
+
+  if (conference.phone?.length) {
+    conference.phone.forEach((phoneEntry) => {
       entryPoints.push({
         entryPointType: "phone",
-        uri: phoneNumber.startsWith("tel:")
-          ? phoneNumber
-          : `tel:${phoneNumber}`,
-        label: phoneNumber,
-        ...(conference.meetingCode && {
-          accessCode: conference.meetingCode,
-          pin: conference.meetingCode,
+        uri: phoneEntry.joinUrl.value.startsWith("tel:")
+          ? phoneEntry.joinUrl.value
+          : `tel:${phoneEntry.joinUrl.value}`,
+        label: phoneEntry.joinUrl.label || phoneEntry.joinUrl.value,
+        ...(phoneEntry.accessCode && {
+          accessCode: phoneEntry.accessCode,
+          pin: phoneEntry.accessCode,
         }),
       });
     });
@@ -224,7 +243,7 @@ function toGoogleCalendarConferenceData(
     : "hangoutsMeet";
 
   return {
-    conferenceId: conference.id,
+    conferenceId: conference.conferenceId,
     conferenceSolution: {
       name: conference.name ?? "Google Meet",
       key: {
@@ -315,7 +334,7 @@ function parseGoogleCalendarConferenceFallback(
 ): Conference | undefined {
   // Function to extract URLs from text using a comprehensive regex
   const extractUrls = (text: string): string[] => {
-    const urlRegex = /https?:\/\/[^\s<>"'{}|\\^`\[\]]+/gi;
+    const urlRegex = /https?:\/\/[^\s<>"'{}|\\^`[\]]+/gi;
     return text.match(urlRegex) || [];
   };
 
@@ -326,8 +345,12 @@ function parseGoogleCalendarConferenceFallback(
       return {
         id: service.id,
         name: service.name,
-        joinUrl: service.joinUrl,
-        meetingCode: "",
+        video: {
+          joinUrl: {
+            value: service.joinUrl,
+          },
+          meetingCode: service.id,
+        },
       };
     }
     return undefined;
@@ -396,35 +419,73 @@ function parseGoogleCalendarConferenceFallback(
   return undefined;
 }
 
-function parseGoogleCalendarConferenceData(
+export function parseGoogleCalendarConferenceData(
   event: GoogleCalendarEvent,
 ): Conference | undefined {
-  if (event.conferenceData?.entryPoints?.length) {
-    const videoEntry = event.conferenceData.entryPoints.find(
-      (e) => e.entryPointType === "video" && e.uri,
-    );
-
-    const phoneNumbers = event.conferenceData.entryPoints
-      .filter((e) => e.entryPointType === "phone" && e.uri)
-      .map((e) => e.uri as string);
-
-    if (videoEntry?.uri) {
-      const accessCode =
-        videoEntry.meetingCode ?? videoEntry.passcode ?? videoEntry.password;
-
-      return {
-        id: event.conferenceData.conferenceId,
-        name: event.conferenceData.conferenceSolution?.name ?? "Google Meet",
-        joinUrl: videoEntry.uri,
-        meetingCode: accessCode ?? "",
-        phoneNumbers: phoneNumbers.length ? phoneNumbers : undefined,
-        password: accessCode,
-      };
-    }
+  console.log(JSON.stringify(event.conferenceData, null, 2));
+  if (!event.conferenceData?.entryPoints?.length) {
+    // If no conference data, fall back to searching other fields
+    return parseGoogleCalendarConferenceFallback(event);
   }
 
-  // If no official conference data, fall back to searching other fields
-  return parseGoogleCalendarConferenceFallback(event);
+  // There is at most one video entry point
+  const videoEntryPoint = event.conferenceData.entryPoints.find(
+    (e) => e.entryPointType === "video",
+  );
+
+  // There is at most one sip entry point
+  const sipEntryPoint = event.conferenceData.entryPoints.find(
+    (e) => e.entryPointType === "sip",
+  );
+
+  // There can be multiple phone entry points
+  const phoneEntryPoints = event.conferenceData.entryPoints.filter(
+    (e) => e.entryPointType === "phone" && e.uri,
+  );
+
+  // TODO: handle "more" type entry points
+  return {
+    id: videoEntryPoint?.uri
+      ? detectMeetingLink(videoEntryPoint.uri)?.id
+      : undefined,
+    conferenceId: event.conferenceData.conferenceId,
+    name: event.conferenceData.conferenceSolution?.name,
+    ...(videoEntryPoint &&
+      videoEntryPoint.uri && {
+        video: {
+          joinUrl: {
+            label: videoEntryPoint.label,
+            value: videoEntryPoint.uri,
+          },
+          meetingCode: videoEntryPoint.meetingCode,
+          accessCode: videoEntryPoint.accessCode,
+          password: videoEntryPoint.password,
+        },
+      }),
+    ...(sipEntryPoint &&
+      sipEntryPoint.uri && {
+        sip: {
+          joinUrl: {
+            label: sipEntryPoint.label,
+            value: sipEntryPoint.uri,
+          },
+          meetingCode: sipEntryPoint.meetingCode,
+          accessCode: sipEntryPoint.accessCode,
+          password: sipEntryPoint.password,
+        },
+      }),
+    ...(phoneEntryPoints.length > 0 && {
+      phone: phoneEntryPoints.map((entryPoint) => ({
+        joinUrl: {
+          label: entryPoint.label,
+          value: entryPoint.uri!,
+        },
+        meetingCode: entryPoint.meetingCode,
+        accessCode: entryPoint.accessCode,
+        password: entryPoint.password,
+      })),
+    }),
+  };
 }
 
 export function parseGoogleCalendarAttendee(
