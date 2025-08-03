@@ -6,9 +6,9 @@ import {
   TaskCollectionWithTasks,
 } from "../../interfaces";
 import { CreateTaskInput, UpdateTaskInput } from "../../schemas/tasks";
-import { parseGoogleTask, toGoogleTask } from "./google-tasks/utils";
 import { TaskProvider } from "../interfaces";
 import { ProviderError } from "../lib/provider-error";
+import { parseGoogleTask, toGoogleTask } from "./google-tasks/utils";
 
 interface GoogleTasksProviderOptions {
   accessToken: string;

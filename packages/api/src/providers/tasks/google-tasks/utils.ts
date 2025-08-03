@@ -1,7 +1,11 @@
+import { Temporal } from "@js-temporal/polyfill";
+
 import { Task } from "../../../interfaces";
 import { CreateTaskInput, UpdateTaskInput } from "../../../schemas/tasks";
-import { GoogleTask, GoogleTaskUpdateParams } from "../../calendars/google-calendar/interfaces";
-import { Temporal } from "@js-temporal/polyfill";
+import {
+  GoogleTask,
+  GoogleTaskUpdateParams,
+} from "../../calendars/google-calendar/interfaces";
 
 function parseGoogleTaskDate(date: string) {
   return Temporal.PlainDate.from(date.split("T")[0]!);
@@ -40,4 +44,4 @@ export function toGoogleTask(
     completed: task.completed?.toString(),
     tasklist: task.taskCollectionId,
   };
-  }
+}
